@@ -67,13 +67,3 @@ Geliştirme süreçlerini GitHub Issues ve Projects üzerinden takip etmek için
 
 [ ] systemd servis dosyasının sunucuya yüklenerek uygulamanın 4 worker ile 127.0.0.1:8000 üzerinde daimi canlıya alınması.
 
-🤝 Katkıda Bulunma (Contributing)
-Bu projeyi forklayın (git clone).
-
-Yeni bir özellik için branch açın (git checkout -b feature/MfaGelistirmesi).
-
-Değişikliklerinizi commit edin (git commit -am 'Eklendi: MFA Kontrol Noktası').
-
-Branch'inizi push edin (git push origin feature/MfaGelistirmesi).
-
-Bir Pull Request oluşturun.
