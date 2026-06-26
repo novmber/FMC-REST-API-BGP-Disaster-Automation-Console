@@ -22,7 +22,6 @@ Cihazlarda yıkıcı veya rotayı değiştirecek aksiyonlar (Disaster Trigger / 
 📂 Öngörülen Klasör Ağacı
 Geliştirme sürecinde takip edilecek modüler klasör yapısı:
 
-Plaintext
 disaster-console/
 ├── app/
 │   ├── __init__.py
