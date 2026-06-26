@@ -19,24 +19,7 @@ BGP Entegrasyonu: Edge router'lara Netmiko üzerinden SSH kanalları açılarak 
 3. Sıkılaştırılmış Güvenlik (MFA/TOTP)
 Cihazlarda yıkıcı veya rotayı değiştirecek aksiyonlar (Disaster Trigger / Rollback) çalıştırılmadan önce, operasyonu yapan mühendisin Authenticator uygulamasındaki (Google/Microsoft) zamana duyarlı 6 haneli TOTP token kodunu girmesi ve doğrulaması zorunludur.
 
-📂 Öngörülen Klasör Ağacı
-Geliştirme sürecinde takip edilecek modüler klasör yapısı:
 
-disaster-console/
-├── app/
-│   ├── __init__.py
-│   ├── main.py                 # FastAPI ana uygulama ve HTTP rota (Route) yönetimi
-│   ├── core/
-│   │   ├── config.py           # .env dosyası ve çevresel değişken yönetimi
-│   │   └── security.py         # JWT Token üretimi, şifreleme ve TOTP/MFA kontrolü
-│   ├── services/
-│   │   ├── fmc_service.py      # Cisco FMC REST API entegrasyon servisi
-│   │   └── bgp_service.py      # Router SSH (Netmiko) otomasyon servisi
-│   └── templates/
-│       └── index.html          # Kayma/taşma sorunları çözülmüş kararlı dashboard arayüzü
-├── .env.example                # Örnek konfigürasyon şablonu
-├── requirements.txt            # Python bağımlılık listesi
-└── disaster_automation.service # Linux Systemd servis şablonu
 
 🛠️ Bağımlılıklar ve Dağıtım Gereksinimleri
 Projenin üretim (Production) ortamında kararlı çalışabilmesi için aşağıdaki bileşenler ve kütüphaneler temel alınmıştır:
