@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FTD Failover Konsolu</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght=500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --void:#0a0e14;
+    --panel:#121822;
+    --panel-raised:#1a2230;
+    --border:#232b38;
+    --ink:#e8edf4;
+    --ink-dim:#8a96a8;
+    --ink-faint:#4a5568;
+    --primary:#3b9eff;
+    --primary-dim:rgba(59,158,255,0.14);
+    --dr:#ff8a3d;
+    --dr-dim:rgba(255,138,61,0.14);
+    --danger:#ef4444;
+    --danger-dim:rgba(239,68,68,0.12);
+    --success:#22c55e;
+    --success-dim:rgba(34,197,94,0.12);
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--void);
+    color:var(--ink);
+    font-family:'IBM Plex Sans',sans-serif;
+    line-height:1.45;
+    -webkit-font-smoothing:antialiased;
+    overflow-x: hidden; /* Sayfa genelinde sağa kaymayı engeller */
+  }
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  .app{max-width:1180px;margin:0 auto;padding:20px 16px 60px;}
+
+  /* ---------- Topbar ---------- */
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding-bottom:16px;border-bottom:1px solid var(--border);margin-bottom:20px;}
+  .topbar__brand{display:flex;align-items:center;gap:10px;}
+  .topbar__mark{font-size:20px;color:var(--primary);}
+  .topbar__title{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:16px;letter-spacing:0.02em;}
+  .topbar__env{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;color:var(--danger);
+    border:1px solid var(--danger);background:var(--danger-dim);padding:2px 7px;border-radius:4px;letter-spacing:0.05em;
+  }
+  .topbar__clock{font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--ink-dim);}
+
+  /* ---------- Topology ---------- */
+  .topology{
+    display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:0;
+    background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
+    padding:22px 18px;margin-bottom:18px;
+  }
+  .topology__node{padding:14px 16px;border-radius:8px;border:1px solid var(--border);background:var(--panel-raised);transition:box-shadow .3s, border-color .3s, opacity .3s;}
+  .topology__node-head{display:flex;align-items:center;gap:7px;margin-bottom:4px;}
+  .topology__dot{width:8px;height:8px;border-radius:50%;background:var(--ink-faint);flex-shrink:0;transition:background .3s;}
+  .topology__node-name{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:13.5px;letter-spacing:0.02em;}
+  .topology__node-sub{font-size:11.5px;color:var(--ink-dim);margin-bottom:8px;}
+  .topology__node-state{
+    display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:10.5px;font-weight:600;letter-spacing:0.06em;
+    padding:2px 8px;border-radius:4px;margin-bottom:6px;background:rgba(255,255,255,0.05);color:var(--ink-faint);
+    transition:background .3s, color .3s;
+  }
+  .topology__node-meta{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-dim);}
+  .topology__node-meta + .topology__node-meta{margin-top:2px;opacity:0.85;}
+
+  .topology__node--active-main{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary-dim),0 0 18px -4px var(--primary-dim);}
+  .topology__node--active-main .topology__dot{background:var(--primary);box-shadow:0 0 0 3px var(--primary-dim);}
+  .topology__node--active-main .topology__node-state{background:var(--primary-dim);color:var(--primary);}
+
+  .topology__node--active-dr{border-color:var(--dr);box-shadow:0 0 0 1px var(--dr-dim),0 0 18px -4px var(--dr-dim);}
+  .topology__node--active-dr .topology__dot{background:var(--dr);box-shadow:0 0 0 3px var(--dr-dim);}
+  .topology__node--active-dr .topology__node-state{background:var(--dr-dim);color:var(--dr);}
+
+  .topology__node--standby{opacity:0.85;}
+
+  .topology__node--unreachable{opacity:0.75;border-style:dashed;border-color:var(--ink-faint);}
+  .topology__node--unreachable .topology__dot{background:var(--danger);opacity:0.65;}
+  .topology__node--unreachable .topology__node-state{background:var(--danger-dim);color:var(--danger);}
+
+  .topology__link{padding:0 10px;}
+  .topology__line{width:90px;height:14px;display:block;}
+  .topology__line-path{stroke:var(--primary);stroke-width:2;stroke-dasharray:6 5;transition:stroke .4s;}
+  @media (prefers-reduced-motion:no-preference){ .topology__line-path{animation:flow 1.1s linear infinite;} }
+  .topology__line-path.is-idle{animation-play-state:paused;stroke:var(--ink-faint);opacity:0.5;}
+  @keyframes flow{ to{ stroke-dashoffset:-22; } }
+
+  @media (max-width:640px){
+    .topology{grid-template-columns:1fr;gap:14px;}
+    .topology__link{transform:rotate(90deg);justify-self:center;padding:4px 0;}
+  }
+
+  /* ---------- Mode bar ---------- */
+  .modebar{
+    display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;
+    background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:14px 18px;margin-bottom:18px;
+  }
+  .modebar__badge{display:flex;align-items:baseline;gap:10px;}
+  .modebar__label{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--ink-faint);letter-spacing:0.08em;}
+  .modebar__value{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:18px;color:var(--success);letter-spacing:0.02em;transition:color .3s;}
+  .modebar__value.is-disaster{color:var(--danger);}
+  .modebar__value.is-test{color:var(--dr);}
+  .modebar__meta{font-size:12px;color:var(--ink-dim);}
+  .modebar__meta span{color:var(--ink);}
+
+  /* ---------- Drift ---------- */
+  .drift{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:14px 18px;margin-bottom:24px;}
+  .drift__row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;}
+  .drift__text{font-size:12.5px;color:var(--ink-dim);}
+  .drift__text span{color:var(--ink);}
+  .drift__ok{color:var(--success)!important;}
+  .drift__warn{color:var(--dr)!important;}
+  .drift__alert{
+    margin-top:14px;padding:12px 14px;border-radius:8px;
+    background:var(--dr-dim);border-left:3px solid var(--dr);
+  }
+  .drift__alert-head{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:13px;color:var(--dr);margin-bottom:8px;}
+  .drift__alert-list{margin:0 0 12px;padding-left:18px;font-size:12.5px;color:var(--ink-dim);}
+  .drift__alert-list li{margin-bottom:4px;}
+  .drift__alert-actions{display:flex;gap:10px;flex-wrap:wrap;}
+
+  /* ---------- Section heading ---------- */
+  .section-title{font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:600;color:var(--ink-dim);letter-spacing:0.06em;text-transform:uppercase;margin:0 0 10px;}
+  section{margin-bottom:26px;}
+
+  /* ---------- Tables ---------- */
+  .table-wrap{
+    width: 100%;
+    overflow: hidden; /* Sola/sağa kaydırmayı gizler */
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+  }
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  thead th{
+    text-align:left;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--ink-faint);
+    letter-spacing:0.05em;padding:12px 14px;background:var(--panel-raised);border-bottom:1px solid var(--border);white-space:nowrap;
+  }
+  tbody td{padding:12px 14px;border-bottom:1px solid var(--border);background:var(--panel);white-space:nowrap;}
+  tbody tr:last-child td{border-bottom:none;}
+  
+  .dev-name{font-family:'IBM Plex Mono',monospace;font-weight:500;}
+  .site-tag{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;}
+  .site-tag::before{content:"";width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+  .site-tag--main::before{background:var(--primary);}
+  .site-tag--dr::before{background:var(--dr);}
+  .role-pill{font-family:'IBM Plex Mono',monospace;font-size:10.5px;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,0.05);color:var(--ink-dim);}
+  
+  .if-state{font-family:'IBM Plex Mono',monospace;font-size:12px;transition:color .3s;}
+  .if-state.is-up{color:var(--success);}
+  .if-state.is-down{color:var(--ink-faint);}
+  .if-state.is-unknown{color:var(--danger);}
+  
+  .deploy-cell{font-family:'IBM Plex Mono',monospace;font-size:12px;transition:color .3s;}
+  .deploy-cell.is-ok{color:var(--success);}
+  .deploy-cell.is-skip{color:var(--ink-faint);}
+  
+  /* FMC API URL'leri ve BGP Komutları için sığdırma filtresi */
+  .cmd-cell{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11.5px;
+    color:var(--ink-dim);
+    transition:color .3s;
+    white-space: normal !important;
+    word-break: break-all;
+    max-width: 420px;
+    line-height: 1.4;
+  }
+  .cmd-cell.is-skip{color:var(--ink-faint);}
+
+  /* ---------- Actions ---------- */
+  .actions{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:18px;}
+  .actions__hint{font-size:12px;color:var(--ink-dim);margin:0 0 16px;line-height:1.6;}
+  .actions__hint b{color:var(--ink);}
+  .actions__dryrun{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-dim);margin-bottom:16px;cursor:pointer;user-select:none;}
+  .actions__dryrun input{accent-color:var(--primary);width:15px;height:15px;}
+  .actions__buttons{display:flex;gap:12px;flex-wrap:wrap;}
+
+  .btn{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:13.5px;padding:12px 20px;border-radius:8px;border:1px solid transparent;cursor:pointer;transition:filter .15s, opacity .15s;}
+  .btn:focus-visible{outline:2px solid var(--ink);outline-offset:2px;}
+  .btn:disabled{opacity:0.35;cursor:not-allowed;}
+  .btn--danger{background:var(--danger);color:#1a0707;}
+  .btn--danger:hover:not(:disabled){filter:brightness(1.1);}
+  .btn--warning{background:var(--dr);color:#2b1404;}
+  .btn--warning:hover:not(:disabled){filter:brightness(1.1);}
+  .btn--success{background:var(--success);color:#06210e;}
+  .btn--success:hover:not(:disabled){filter:brightness(1.1);}
+  .btn--ghost{background:transparent;color:var(--ink-dim);border-color:var(--border);}
+  .btn--ghost:hover{color:var(--ink);}
+  .btn--sm{padding:7px 14px;font-size:12px;}
+
+  /* ---------- Log ---------- */
+  .log{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:18px;}
+  .log__list{list-style:none;margin:0;padding:0;font-family:'IBM Plex Mono',monospace;font-size:12.5px;}
+  .log__list li{display:flex;align-items:flex-start;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);color:var(--ink-dim);}
+  .log__list li:last-child{border-bottom:none;}
+  .log__icon{width:16px;flex-shrink:0;text-align:center;}
+  .log__list li.is-done{color:var(--ink);}
+  .log__list li.is-done .log__icon{color:var(--success);}
+  .log__list li.is-active{color:var(--ink);}
+  .log__list li.is-active .log__icon{color:var(--primary);}
+  .log__list li.is-info{color:var(--ink-dim);font-style:italic;}
+  .log__list li.is-info .log__icon{color:var(--ink-faint);}
+
+  .audit-meta{font-size:11.5px;color:var(--ink-faint);}
+
+  /* ---------- Modal ---------- */
+  .modal{position:fixed;inset:0;background:rgba(5,7,11,0.7);display:flex;align-items:center;justify-content:center;padding:20px;z-index:50;}
+  .modal[hidden]{display:none;}
+  .modal__panel{background:var(--panel-raised);border:1px solid var(--border);border-radius:var(--radius);padding:24px;max-width:440px;width:100%;}
+  .modal__title{font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;margin:0 0 10px;}
+  .modal__body{font-size:13px;color:var(--ink-dim);margin:0 0 16px;line-height:1.6;}
+  .modal__input{width:100%;background:var(--void);border:1px solid var(--border);color:var(--ink);font-family:'IBM Plex Mono',monospace;padding:10px 12px;border-radius:6px;font-size:13px;margin-bottom:16px;}
+  .modal__input:focus{outline:1px solid var(--primary);}
+  .modal__actions{display:flex;justify-content:flex-end;gap:10px;}
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <header class="topbar">
+    <div class="topbar__brand">
+      <span class="topbar__mark">⌁</span>
+      <span class="topbar__title">FTD FAILOVER KONSOLU</span>
+      <span class="topbar__env">PROD</span>
+    </div>
+    <div class="topbar__clock mono" id="clock">--:--:--</div>
+  </header>
+
+  <section class="topology" aria-label="Saha topolojisi">
+    <div class="topology__node topology__node--active-main" id="nodeMain">
+      <div class="topology__node-head">
+        <span class="topology__dot"></span>
+        <span class="topology__node-name">İSTANBUL — ANA MERKEZ</span>
+      </div>
+      <div class="topology__node-sub">HA Grup 1</div>
+      <div class="topology__node-state" id="nodeMainState">AKTİF</div>
+      <div class="topology__node-meta" id="nodeMainMeta">2 FTD · 8/8 arayüz UP</div>
+      <div class="topology__node-meta" id="nodeMainBgp">BGP: ESTABLISHED</div>
+    </div>
+
+    <div class="topology__link" aria-hidden="true">
+      <svg class="topology__line" viewBox="0 0 90 14" preserveAspectRatio="none">
+        <line x1="0" y1="7" x2="90" y2="7" class="topology__line-path" id="linePath"/>
+      </svg>
+    </div>
+
+    <div class="topology__node topology__node--standby" id="nodeDr">
+      <div class="topology__node-head">
+        <span class="topology__dot"></span>
+        <span class="topology__node-name">ANKARA — DISASTER RECOVERY</span>
+      </div>
+      <div class="topology__node-sub">HA Grup 2</div>
+      <div class="topology__node-state" id="nodeDrState">STANDBY</div>
+      <div class="topology__node-meta" id="nodeDrMeta">2 FTD · 0/8 arayüz UP</div>
+      <div class="topology__node-meta" id="nodeDrBgp">BGP: SHUTDOWN</div>
+    </div>
+  </section>
+
+  <section class="modebar">
+    <div class="modebar__badge">
+      <span class="modebar__label">MOD</span>
+      <span class="modebar__value" id="modeValue">NORMAL ÇALIŞMA</span>
+    </div>
+    <div class="modebar__meta">Son işlem: <span id="lastAction">22 Haz 2026, 09:14 — admin.kemal</span></div>
+  </section>
+
+  <section class="drift">
+    <div class="drift__row" id="driftQuiet">
+      <span class="drift__text">🔍 Drift Kontrolü — son tarama: <span id="driftTime">6 dk önce</span> · <span id="driftStatus" class="drift__ok">fark yok ✓</span></span>
+      <button class="btn btn--ghost btn--sm" id="btnScanNow">Şimdi tara</button>
+    </div>
+    <div class="drift__alert" id="driftAlert" hidden>
+      <div class="drift__alert-head">⚠ <span id="driftAlertTitle">1 fark tespit edildi</span></div>
+      <ul class="drift__alert-list">
+        <li><span class="mono">FTD-DR-01</span> — yeni arayüz tespit edildi: <span class="mono">GigabitEthernet0/3</span> (baseline'da yok)</li>
+      </ul>
+      <div class="drift__alert-actions">
+        <button class="btn btn--success btn--sm" id="btnDriftAccept">Kabul et (baseline güncelle)</button>
+        <button class="btn btn--ghost btn--sm" id="btnDriftIgnore">Yoksay</button>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section-title">Cihazlar (Cisco FMC REST API Yönetimi)</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>HA Cluster</th><th>Üye Cihaz IP & Rol</th><th>Model / Ver.</th><th>Arayüz Durumu</th><th>FMC REST API Payload Hedefi</th><th>Durum</th></tr>
+        </thead>
+        <tbody id="deviceTable">
+          <tr id="row-hq1">
+            <td class="mono">EthicaHA</td>
+            <td>192.168.36.41 (Primary - Active)</td>
+            <td>2130 / 7.4.7</td>
+            <td class="if-state is-up" id="if-hq1">ENABLED</td>
+            <td class="cmd-cell" id="deploy-hq1">/api/fmc_config/v1/domain/default/devices/devicemapping/ethica-uuid-0123456789/ftdphysicalinterfaces</td>
+            <td class="deploy-cell is-ok" id="status-hq1">✓ Değişiklik Yok</td>
+          </tr>
+          <tr id="row-hq2">
+            <td class="mono">EthicaHA</td>
+            <td>192.168.36.42 (Secondary - Standby)</td>
+            <td>2130 / 7.4.7</td>
+            <td class="if-state is-up" id="if-hq2">ENABLED</td>
+            <td class="cmd-cell" id="deploy-hq2">— (HA synced)</td>
+            <td class="deploy-cell is-ok" id="status-hq2">✓ Değişiklik Yok</td>
+          </tr>
+          <tr id="row-dr1">
+            <td class="mono">TEMELLIHA</td>
+            <td>ANK-FTD-1 (Primary - Active)</td>
+            <td>2130 / 7.4.7</td>
+            <td class="if-state is-down" id="if-dr1">DISABLED</td>
+            <td class="cmd-cell" id="deploy-dr1">/api/fmc_config/v1/domain/default/devices/devicemapping/temelli-uuid-9876543210/ftdphysicalinterfaces</td>
+            <td class="deploy-cell is-ok" id="status-dr1">✓ Değişiklik Yok</td>
+          </tr>
+          <tr id="row-dr2">
+            <td class="mono">TEMELLIHA</td>
+            <td>ANK-FTD-2 (Secondary - Standby)</td>
+            <td>2130 / 7.4.7</td>
+            <td class="if-state is-down" id="if-dr2">DISABLED</td>
+            <td class="cmd-cell" id="deploy-dr2">— (HA synced)</td>
+            <td class="deploy-cell is-ok" id="status-dr2">✓ Değişiklik Yok</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section-title">BGP Altyapısı (Upstream Router Filtre Yönetimi)</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Router</th><th>Lokasyon</th><th>Uygulanan Prefix List</th><th>185.156.4.0/24 Durumu</th><th>Yürütülecek SSH Komut Seti</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="dev-name">IST-RTR-01</td>
+            <td>İSTANBUL</td>
+            <td class="mono">global-bgp-out (seq 5)</td>
+            <td class="if-state is-up" id="bgp-ist">PERMIT (ANONS EDİLİYOR)</td>
+            <td class="cmd-cell is-skip" id="cmd-ist">—</td>
+          </tr>
+          <tr>
+            <td class="dev-name">IST-RTR-02</td>
+            <td>İSTANBUL</td>
+            <td class="mono">global-bgp-out (seq 5)</td>
+            <td class="if-state is-up" id="bgp-ist2">PERMIT (ANONS EDİLİYOR)</td>
+            <td class="cmd-cell is-skip" id="cmd-ist2">—</td>
+          </tr>
+          <tr>
+            <td class="dev-name">ANK-RTR-01</td>
+            <td>ANKARA</td>
+            <td class="mono">BLOK_185 (seq 5)</td>
+            <td class="if-state is-down" id="bgp-ank">DENY (FİLTRELENİYOR)</td>
+            <td class="cmd-cell" id="cmd-ank">router bgp 65001<br>address-family ipv4<br>neighbor 10.0.1.1 route-map DISASTER_IN in</td>
+          </tr>
+          <tr>
+            <td class="dev-name">ANK-RTR-02</td>
+            <td>ANKARA</td>
+            <td class="mono">BLOK_185 (seq 5)</td>
+            <td class="if-state is-down" id="bgp-ank2">DENY (FİLTRELENİYOR)</td>
+            <td class="cmd-cell is-skip" id="cmd-ank2">—</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="actions">
+    <p class="actions__hint">
+      <b>Disaster Modu:</b> İstanbul'a (FTD + router) bağlanmaz, sadece Ankara'yı açar (FTD + BGP) ve deploy eder.
+      <b>Disaster Test Modu:</b> önce İstanbul'u kapatır (FTD + BGP), sonra Ankara'yı açar, ikisine de deploy eder.
+      <b>Rollback:</b> Ankara'yı kapatır, İstanbul'u açar (FTD + BGP), ikisine de deploy eder.
+    </p>
+    <label class="actions__dryrun" style="display:none;"> <input type="checkbox" id="dryrun">
+      <span>Dry-run</span>
+    </label>
+    <div class="actions__buttons">
+      <button class="btn btn--danger" id="btnDisasterReal">⚠ Disaster Modu Tetikle</button>
+      <button class="btn btn--warning" id="btnDisasterTest">🧪 Test Senaryosu Çalıştır</button>
+      <button class="btn btn--success" id="btnRollback" disabled>↺ Rollback Yap</button>
+    </div>
+  </section>
+
+  <section class="log" id="logSection" hidden>
+    <h2 class="section-title">İşlem adımları</h2>
+    <ol class="log__list" id="logList"></ol>
+  </section>
+
+  <section>
+    <h2 class="section-title">Audit log</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Zaman</th><th>Kullanıcı</th><th>İşlem</th><th>Sonuç</th></tr></thead>
+        <tbody id="auditTable">
+          <tr><td class="mono">21 Haz 2026 18:02</td><td class="mono">admin.kemal</td><td>Disaster Test Modu (dry-run)</td><td class="deploy-cell is-ok">Başarılı</td></tr>
+          <tr><td class="mono">15 Haz 2026 11:40</td><td class="mono">admin.ayse</td><td>Rollback → Normal</td><td class="deploy-cell is-ok">Başarılı</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+</div>
+
+<div class="modal" id="modal" hidden>
+  <div class="modal__panel">
+    <h3 class="modal__title" id="modalTitle">Onay</h3>
+    <p class="modal__body" id="modalBody"></p>
+    <input class="modal__input" id="modalInput" autocomplete="off" placeholder="Onaylamak için yazın">
+    <div class="modal__actions">
+      <button class="btn btn--ghost" id="modalCancel">Vazgeç</button>
+      <button class="btn btn--danger" id="modalConfirm" disabled>Onayla ve başlat</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  function tick(){ document.getElementById('clock').textContent = new Date().toLocaleTimeString('tr-TR'); }
+  tick(); setInterval(tick, 1000);
+
+  let activeScenario = 'normal';
+  let pendingTarget = null;
+
+  const els = {
+    btnDisasterReal: document.getElementById('btnDisasterReal'),
+    btnDisasterTest: document.getElementById('btnDisasterTest'),
+    btnRollback: document.getElementById('btnRollback'),
+    modal: document.getElementById('modal'),
+    modalTitle: document.getElementById('modalTitle'),
+    modalBody: document.getElementById('modalBody'),
+    modalInput: document.getElementById('modalInput'),
+    modalConfirm: document.getElementById('modalConfirm'),
+    modalCancel: document.getElementById('modalCancel'),
+    logSection: document.getElementById('logSection'),
+    logList: document.getElementById('logList'),
+    modeValue: document.getElementById('modeValue'),
+    lastAction: document.getElementById('lastAction'),
+    nodeMain: document.getElementById('nodeMain'),
+    nodeDr: document.getElementById('nodeDr'),
+    nodeMainState: document.getElementById('nodeMainState'),
+    nodeDrState: document.getElementById('nodeDrState'),
+    nodeMainMeta: document.getElementById('nodeMainMeta'),
+    nodeDrMeta: document.getElementById('nodeDrMeta'),
+    nodeMainBgp: document.getElementById('nodeMainBgp'),
+    nodeDrBgp: document.getElementById('nodeDrBgp'),
+    linePath: document.getElementById('linePath'),
+    auditTable: document.getElementById('auditTable'),
+    dryrun: document.getElementById('dryrun'),
+    driftTime: document.getElementById('driftTime'),
+    driftStatus: document.getElementById('driftStatus'),
+    driftAlert: document.getElementById('driftAlert'),
+    btnScanNow: document.getElementById('btnScanNow'),
+    btnDriftAccept: document.getElementById('btnDriftAccept'),
+    btnDriftIgnore: document.getElementById('btnDriftIgnore'),
+  };
+
+  const CONFIRM_WORD = { 'disaster-real':'DISASTER', 'disaster-test':'TEST', 'rollback':'ROLLBACK' };
+  const MODAL_TITLE  = { 'disaster-real':'Disaster Modu onayı', 'disaster-test':'Disaster Test Modu onayı', 'rollback':'Rollback onayı' };
+  const MODAL_BODY   = {
+    'disaster-real': "Bu işlem İstanbul'a (FTD + router) bağlanmaz. Sadece Ankara için BGP neighbor'ı aktifleştirip arayüzleri açacak ve deploy edecek. Gerçek disaster senaryosu için kullanılır.",
+    'disaster-test': "Bu işlem önce İstanbul arayüzlerini ve BGP'sini kapatacak, ardından Ankara tarafını açacak ve her iki tarafa deploy edecek. Tatbikat/test amaçlıdır.",
+    'rollback': "Bu işlem Ankara tarafını kapatacak, İstanbul tarafını açacak ve her iki tarafa deploy edecek. İstanbul'un tekrar erişilebilir olduğu varsayılır."
+  };
+
+  function openModal(target){
+    pendingTarget = target;
+    els.modalInput.value = '';
+    els.modalConfirm.disabled = true;
+    els.modalTitle.textContent = MODAL_TITLE[target];
+    els.modalBody.textContent = MODAL_BODY[target];
+    els.modalInput.placeholder = "Onaylamak için " + CONFIRM_WORD[target] + " yazın";
+    els.modal.hidden = false;
+    els.modalInput.focus();
+  }
+  function closeModal(){ els.modal.hidden = true; pendingTarget = null; }
+
+  els.btnDisasterReal.addEventListener('click', () => openModal('disaster-real'));
+  els.btnDisasterTest.addEventListener('click', () => openModal('disaster-test'));
+  els.btnRollback.addEventListener('click', () => openModal('rollback'));
+  els.modalCancel.addEventListener('click', closeModal);
+
+  els.modalInput.addEventListener('input', () => {
+    els.modalConfirm.disabled = els.modalInput.value.trim().toUpperCase() !== CONFIRM_WORD[pendingTarget];
+  });
+
+  els.modalConfirm.addEventListener('click', () => {
+    const target = pendingTarget;
+    closeModal();
+    runSequence(target);
+  });
+
+  function logStep(text, cls){
+    const li = document.createElement('li');
+    li.className = cls || 'is-active';
+    const icon = cls === 'is-info' ? '•' : '○';
+    li.innerHTML = '<span class="log__icon">'+icon+'</span><span>'+text+'</span>';
+    els.logList.appendChild(li);
+    return li;
+  }
+  function finishStep(li){
+    if(li.classList.contains('is-info')) return;
+    li.className = 'is-done';
+    li.querySelector('.log__icon').textContent = '✓';
+  }
+
+  function runSequence(target){
+    const isDry = els.dryrun.checked;
+    els.btnDisasterReal.disabled = true;
+    els.btnDisasterTest.disabled = true;
+    els.btnRollback.disabled = true;
+    els.logSection.hidden = false;
+    els.logList.innerHTML = '';
+
+    const prefix = isDry ? '[DRY-RUN] ' : '';
+    let steps;
+    if(target === 'disaster-real'){
+      steps = [
+        'Ankara (TEMELLIHA) mevcut arayüz durumu okunuyor',
+        prefix + 'Ankara (TEMELLIHA) arayüzleri açılıyor',
+        prefix + 'ANK-RTR-01: BGP neighbor (10.0.1.1) aktifleştiriliyor',
+        'ANK-RTR-01: BGP durumu doğrulanıyor',
+        prefix + 'Ankara cihazlarına deploy gönderiliyor (2 cihaz)',
+        'Deploy doğrulanıyor'
+      ];
+      logStep("İstanbul atlanıyor (FTD + router BGP) — gerçek disaster senaryosunda erişilemez kabul edilir.", 'is-info');
+    } else if(target === 'disaster-test'){
+      steps = [
+        'Mevcut durum okunuyor (4 cihaz + 4 router)',
+        prefix + 'İstanbul (EthicaHA) arayüzleri kapatılıyor',
+        prefix + 'IST-RTR-01: BGP neighbor (10.0.0.1) kapatılıyor',
+        prefix + 'Ankara (TEMELLIHA) arayüzleri açılıyor',
+        prefix + 'ANK-RTR-01: BGP neighbor (10.0.1.1) aktifleştiriliyor',
+        'ANK-RTR-01: BGP durumu doğrulanıyor',
+        prefix + 'Deploy gönderiliyor (4 cihaz)',
+        'Deploy doğrulanıyor'
+      ];
+    } else {
+      steps = [
+        'Mevcut durum okunuyor (4 cihaz + 4 router)',
+        prefix + 'Ankara (TEMELLIHA) arayüzleri kapatılıyor',
+        prefix + 'ANK-RTR-01: BGP neighbor (10.0.1.1) kapatılıyor',
+        prefix + 'İstanbul (EthicaHA) arayüzleri açılıyor',
+        prefix + 'IST-RTR-01: BGP neighbor (10.0.0.1) aktifleştiriliyor',
+        'IST-RTR-01: BGP durumu doğrulanıyor',
+        prefix + 'Deploy gönderiliyor (4 cihaz)',
+        'Deploy doğrulanıyor'
+      ];
+    }
+
+    let i = 0;
+    function next(){
+      if(i > 0) finishStep(els.logList.lastChild);
+      if(i >= steps.length){
+        finishStep(els.logList.lastChild);
+        onSequenceDone(target, isDry);
+        return;
+      }
+      logStep(steps[i]);
+      i++;
+      setTimeout(next, 600);
+    }
+    next();
+  }
+
+  function onSequenceDone(target, isDry){
+    if(!isDry){
+      applyState(target);
+      addAudit(target);
+      activeScenario = (target === 'rollback') ? 'normal' : target;
+    }
+    updateButtons();
+  }
+
+  function updateButtons(){
+    const inDisaster = activeScenario !== 'normal';
+    els.btnDisasterReal.disabled = inDisaster;
+    els.btnDisasterTest.disabled = inDisaster;
+    els.btnRollback.disabled = !inDisaster;
+  }
+
+  function setNodeClass(el, cls){
+    el.classList.remove('topology__node--active-main','topology__node--active-dr','topology__node--standby','topology__node--unreachable');
+    el.classList.add(cls);
+  }
+  function setState(id, text, cls){
+    const el = document.getElementById(id);
+    if(el) {
+      el.textContent = text;
+      el.classList.remove('is-up','is-down','is-unknown');
+      el.classList.add(cls);
+    }
+  }
+  function setStatusCell(id, text, cls){
+    const el = document.getElementById(id);
+    if(el) {
+      el.textContent = text;
+      el.classList.remove('is-ok','is-skip');
+      el.classList.add(cls);
+    }
+  }
+
+  function applyState(target){
+    els.lastAction.textContent = new Date().toLocaleString('tr-TR') + ' — admin.kemal';
+    els.modeValue.classList.remove('is-disaster','is-test');
+
+    if(target === 'disaster-real'){
+      els.modeValue.textContent = 'DISASTER MODU (GERÇEK)';
+      els.modeValue.classList.add('is-disaster');
+
+      setNodeClass(els.nodeMain, 'topology__node--unreachable');
+      els.nodeMainState.textContent = 'ERİŞİLEMİYOR';
+      els.nodeMainMeta.textContent = '2 FTD · durum bilinmiyor';
+      els.nodeMainBgp.textContent = 'BGP: BİLİNMİYOR';
+
+      setNodeClass(els.nodeDr, 'topology__node--active-dr');
+      els.nodeDrState.textContent = 'AKTİF';
+      els.nodeDrMeta.textContent = '2 FTD · 8/8 arayüz UP';
+      els.nodeDrBgp.textContent = 'BGP: ESTABLISHED';
+
+      els.linePath.classList.add('is-idle');
+
+      setState('if-hq1','BİLİNMİYOR','is-unknown'); setState('if-hq2','BİLİNMİYOR','is-unknown');
+      setState('if-dr1','ENABLED','is-up'); setState('if-dr2','ENABLED','is-up');
+      
+      setStatusCell('status-hq1','— dokunulmadı','is-skip'); setStatusCell('status-hq2','— dokunulmadı','is-skip');
+      setStatusCell('status-dr1','✓ Uygulandı','is-ok'); setStatusCell('status-dr2','✓ Uygulandı','is-ok');
+
+      setState('bgp-ist','BİLİNMİYOR','is-unknown');
+      setState('bgp-ank','ESTABLISHED','is-up');
+
+    } else if(target === 'disaster-test'){
+      els.modeValue.textContent = 'DISASTER TEST MODU';
+      els.modeValue.classList.add('is-test');
+
+      setNodeClass(els.nodeMain, 'topology__node--standby');
+      els.nodeMainState.textContent = 'STANDBY';
+      els.nodeMainMeta.textContent = '2 FTD · 0/8 arayüz UP';
+      els.nodeMainBgp.textContent = 'BGP: SHUTDOWN';
+
+      setNodeClass(els.nodeDr, 'topology__node--active-dr');
+      els.nodeDrState.textContent = 'AKTİF';
+      els.nodeDrMeta.textContent = '2 FTD · 8/8 arayüz UP';
+      els.nodeDrBgp.textContent = 'BGP: ESTABLISHED';
+
+      els.linePath.classList.remove('is-idle');
+      els.linePath.style.stroke = 'var(--dr)';
+
+      setState('if-hq1','DISABLED','is-down'); setState('if-hq2','DISABLED','is-down');
+      setState('if-dr1','ENABLED','is-up'); setState('if-dr2','ENABLED','is-up');
+      
+      setStatusCell('status-hq1','✓ Uygulandı','is-ok'); setStatusCell('status-hq2','✓ Uygulandı','is-ok');
+      setStatusCell('status-dr1','✓ Uygulandı','is-ok'); setStatusCell('status-dr2','✓ Uygulandı','is-ok');
+
+      setState('bgp-ist','SHUTDOWN','is-down');
+      setState('bgp-ank','ESTABLISHED','is-up');
+
+    } else {
+      els.modeValue.textContent = 'NORMAL ÇALIŞMA';
+
+      setNodeClass(els.nodeMain, 'topology__node--active-main');
+      els.nodeMainState.textContent = 'AKTİF';
+      els.nodeMainMeta.textContent = '2 FTD · 8/8 arayüz UP';
+      els.nodeMainBgp.textContent = 'BGP: ESTABLISHED';
+
+      setNodeClass(els.nodeDr, 'topology__node--standby');
+      els.nodeDrState.textContent = 'STANDBY';
+      els.nodeDrMeta.textContent = '2 FTD · 0/8 arayüz UP';
+      els.nodeDrBgp.textContent = 'BGP: SHUTDOWN';
+
+      els.linePath.classList.remove('is-idle');
+      els.linePath.style.stroke = 'var(--primary)';
+
+      setState('if-hq1','ENABLED','is-up'); setState('if-hq2','ENABLED','is-up');
+      setState('if-dr1','DISABLED','is-down'); setState('if-dr2','DISABLED','is-down');
+      
+      setStatusCell('status-hq1','✓ Değişiklik Yok','is-ok'); setStatusCell('status-hq2','✓ Değişiklik Yok','is-ok');
+      setStatusCell('status-dr1','✓ Değişiklik Yok','is-ok'); setStatusCell('status-dr2','✓ Değişiklik Yok','is-ok');
+
+      setState('bgp-ist','ESTABLISHED','is-up');
+      setState('bgp-ank','SHUTDOWN','is-down');
+    }
+  }
+
+  function addAudit(target){
+    const LABEL = {
+      'disaster-real': 'Disaster Modu (gerçek) — sadece Ankara tetiklendi',
+      'disaster-test': 'Disaster Test Modu çalıştırıldı',
+      'rollback': 'Rollback → Normal moda dönüldü'
+    };
+    const tr = document.createElement('tr');
+    const time = new Date().toLocaleString('tr-TR');
+    tr.innerHTML = '<td class="mono">'+time+'</td><td class="mono">admin.kemal</td><td>'+LABEL[target]+'</td><td class="deploy-cell is-ok">Başarılı</td>';
+    els.auditTable.prepend(tr);
+  }
+
+  /* ---------- Drift demo ---------- */
+  els.btnScanNow.addEventListener('click', () => {
+    els.btnScanNow.disabled = true;
+    els.driftStatus.textContent = 'taranıyor...';
+    els.driftStatus.className = '';
+    setTimeout(() => {
+      els.driftTime.textContent = 'az önce';
+      els.driftStatus.textContent = '1 fark bulundu';
+      els.driftStatus.className = 'drift__warn';
+      els.driftAlert.hidden = false;
+      els.btnScanNow.disabled = false;
+    }, 900);
+  });
+
+  els.btnDriftAccept.addEventListener('click', () => {
+    els.driftAlert.hidden = true;
+    els.driftTime.textContent = 'az önce';
+    els.driftStatus.textContent = 'fark yok ✓';
+    els.driftStatus.className = 'drift__ok';
+    const tr = document.createElement('tr');
+    const time = new Date().toLocaleString('tr-TR');
+    tr.innerHTML = '<td class="mono">'+time+'</td><td class="mono">admin.kemal</td><td>Drift kabul edildi — baseline güncellendi (FTD-DR-01 +Gi0/3)</td><td class="deploy-cell is-ok">Başarılı</td>';
+    els.auditTable.prepend(tr);
+  });
+
+  els.btnDriftIgnore.addEventListener('click', () => {
+    els.driftAlert.hidden = true;
+    els.driftStatus.textContent = '1 fark bekliyor';
+    els.driftStatus.className = 'drift__warn';
+  });
+</script>
+
+</body>
+</html>
